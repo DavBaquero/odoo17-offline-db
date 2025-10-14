@@ -17,6 +17,7 @@ odoo.define('pos_offline_db.OfflineSync', [
             request.onsuccess = (e) => resolve(e.target.result);
             request.onerror = (e) => reject(e);
         });
+        
     }
 
     async function _save_orders_to_indexeddb(orders){
