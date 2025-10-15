@@ -1,6 +1,6 @@
 var request = indexedDB.open("POS_Order",1);
 request.onupgradeneeded = function(e) {
-    console.log("Creando o abriendo la DB POS_Oder");
+    console.log("Creando o abriendo la DB POS_Order");
     e.target.result.createObjectStore("store1",{keyPath:"id"});
 };
 request.onsuccess = function(e){
