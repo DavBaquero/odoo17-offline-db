@@ -5,6 +5,7 @@ import { patch } from "@web/core/utils/patch";
 
 console.log("Loading OfflineSync for Odoo 17 POS");
 
+
 const DB_NAME = "POS_Order";
 const STORE_NAME = "store1";
 const DB_VERSION = 1;
@@ -52,16 +53,36 @@ patch(PosStore.prototype, {
     async _flush_orders(orders, options){
         
         try{
+
             return await super._flush_orders(orders,options)
+
         }catch(error){
             if (error.message.includes('Connection')){
+
                 console.warn("Conexión perdida. Guardando pedidos en IndexedDB.");
-                await _save_orders_to_indexeddb(orders);
+                
+
+                await _save_orders_to_indexeddb(orders);              
+                
+                orders.forEach(order => {
+                    this.db.remove_order(order.id);
+                    console.log(`Pedido ${order.id} eliminado forzosamente de la BD local de Odoo.`);
+                });
+
+                const paidOrdersKey = this.db.name + '_orders';
+                localStorage.removeItem(paidOrdersKey);
+                console.log(`Clave '${paidOrdersKey}' eliminada del Local Storage.`);
+
+                const pendingOperationsKey = this.db.name + '_pending_operations';
+                localStorage.removeItem(pendingOperationsKey);
+                console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
+
+                console.log("Pedidos guardados localmente. Se sincronizarán cuando la conexión se restablezca.");
                 return{ successful: orders.map(o => ({id: o.id})), 
                 failed: [] };
             } else{
                 throw error;
             }
-        };
+        }
     },    
 });
