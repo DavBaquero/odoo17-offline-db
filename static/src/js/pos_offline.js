@@ -49,8 +49,48 @@ async function _save_orders_to_indexeddb(orders){
     }
 }
 
+async function _get_orders_from_indexeddb(){
+    try{
+        const db = await getIndexedDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([STORE_NAME], "readonly");
+            const store = transaction.objectStore(STORE_NAME);
+            const orders = [];
+
+            store.openCursor().onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    orders.push(cursor.value);
+                    cursor.continue();
+                } else {
+                    resolve(orders);
+                }
+            };
+
+            transaction.onerror = (e) =>{
+                console.error("Error al recuperar de la BD");
+                reject(e);
+            };
+        });
+    }catch(e){
+        console.error("Fallo crítico al acceder o guardar en IndexedDB:", e);
+        throw new Error("IndexedDB get failed."); 
+    }
+}
+
 patch(PosStore.prototype, {
     async _flush_orders(orders, options){
+
+        console.log("Comprobando conexión y pedidos pendientes en IndexedDB...");
+        if(!navigator.onLine){
+            console.warn("Sin conexión a Internet. Guardando pedidos en IndexedDB.");
+        }
+
+        const offline_orders = await _get_orders_from_indexeddb();
+
+        if(offline_orders.length === 0){
+            console.log("No hay pedidos pendientes en IndexedDB.");
+        }
         
         try{
 
@@ -78,6 +118,11 @@ patch(PosStore.prototype, {
                 console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
 
                 console.log("Pedidos guardados localmente. Se sincronizarán cuando la conexión se restablezca.");
+
+                const offline_orders = await _get_orders_from_indexeddb();
+                
+                console.log(`Encontrados ${offline_orders.length} pedidos pendientes en IndexedDB. Intentando sincronizar...`);
+
                 return{ successful: orders.map(o => ({id: o.id})), 
                 failed: [] };
             } else{
