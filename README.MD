@@ -1,5 +1,3 @@
-```markdown
-
 # pos_offline_db
 
 Autor: David Baquero
@@ -55,7 +53,6 @@ pos_offline_db/
 │     └─ js/
         ├─ pos_offline_db.js
         └─ pos_offline.js
-```
 
 Contacto y contribuciones
 -------------------------
