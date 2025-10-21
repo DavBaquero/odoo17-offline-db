@@ -140,7 +140,6 @@ patch(PosStore.prototype, {
 
         try{
             const result = await super._flush_orders(orders_to_sync, {timeout: 5000, shadow: false});
-            debugger
             if(result){
                 console.log("Sincronizacion completada, Vaciando indexedDB...");
                 await _clear_indexeddb_orders();
