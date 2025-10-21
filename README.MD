@@ -25,6 +25,11 @@ Uso
 ---
 Una vez instalado, el POS utilizará IndexedDB para almacenar los pedidos realizados mientras el terminal esté offline. Cuando el terminal recupere la conexión, los pedidos permanecerán en la base local hasta que se implemente/ejecute la lógica de sincronización.
 
+Funcionamiento
+--------------
+
+Cuando se crea la sesión, abre el indexedDB por si se llega a caer la conexión. En caso de que no tenga conexión, bloquea la sincronización normal de odoo, añade el pedido al indexedDB y borra todas las referncias que pueda guardarse en cualquier otro lugar. Cuando vuelve la conexión, sube los datos del indexedDB a la base de datos de odoo y vacía los datos del indexed para que no haya en un futuro pedidos duplicados.
+
 Nota sobre los assets
 ---------------------
 Si renombraste la carpeta del módulo o la estructura difiere del ejemplo, actualiza las rutas de los assets en `__manifest__.py` para que apunten correctamente a los archivos JS/CSS incluidos.
