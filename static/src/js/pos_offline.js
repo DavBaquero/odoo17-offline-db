@@ -22,6 +22,33 @@ function getIndexedDB() {
     
 }
 
+async function del_odoo_local(orders, posStore){
+
+    orders.forEach(order => {
+                    posStore.db.remove_order(order.id);
+                    console.log(`Pedido ${order.id} eliminado forzosamente de la BD local de Odoo.`);
+                });
+
+    const paidOrdersKey = posStore.db.name + '_orders';
+    localStorage.removeItem(paidOrdersKey);
+    console.log(`Clave '${paidOrdersKey}' eliminada del Local Storage.`);
+
+    const pendingOperationsKey = posStore.db.name + '_pending_operations';
+    localStorage.removeItem(pendingOperationsKey);
+    console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
+}
+
+async function check_offline_orders(offline_orders) {
+    console.log("Comprobando conexión y pedidos pendientes en IndexedDB...");
+
+    if(offline_orders.length === 0){
+        console.log("No hay pedidos pendientes en IndexedDB.");
+        return;
+    }
+    
+    console.log(`Encontrados ${offline_orders.length} pedidos pendientes en IndexedDB. Intentando sincronizar...`);
+}
+
 async function _save_orders_to_indexeddb(orders){
     try{
         const db = await getIndexedDB();
@@ -116,22 +143,15 @@ patch(PosStore.prototype, {
 
     async sync_offline_orders(){
 
-        console.log("Comprobando conexión y pedidos pendientes en IndexedDB...");
-
         if(!navigator.onLine){
             console.warn("Sin conexión a Internet. Guardando pedidos en IndexedDB.");
             return;
         }
 
-        const offline_orders = await _get_orders_from_indexeddb();
+        const offline_orders = await _get_orders_from_indexeddb()
 
-        if(offline_orders.length === 0){
-            console.log("No hay pedidos pendientes en IndexedDB.");
-            return;
-        }
+        await check_offline_orders(offline_orders)
         
-        console.log(`Encontrados ${offline_orders.length} pedidos pendientes en IndexedDB. Intentando sincronizar...`);
-
         const orders_to_sync = offline_orders.map(order_data => ({
             ...order_data,
             id: order_data.uid,
@@ -152,7 +172,6 @@ patch(PosStore.prototype, {
     },
 
     async _flush_orders(orders, options){
-        
         try{
 
             return await super._flush_orders(orders,options)
@@ -161,22 +180,10 @@ patch(PosStore.prototype, {
             if (error.message.includes('Connection')){
 
                 console.warn("Conexión perdida. Guardando pedidos en IndexedDB.");
-                
 
                 await _save_orders_to_indexeddb(orders);              
                 
-                orders.forEach(order => {
-                    this.db.remove_order(order.id);
-                    console.log(`Pedido ${order.id} eliminado forzosamente de la BD local de Odoo.`);
-                });
-
-                const paidOrdersKey = this.db.name + '_orders';
-                localStorage.removeItem(paidOrdersKey);
-                console.log(`Clave '${paidOrdersKey}' eliminada del Local Storage.`);
-
-                const pendingOperationsKey = this.db.name + '_pending_operations';
-                localStorage.removeItem(pendingOperationsKey);
-                console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
+                await del_odoo_local(orders,this);
 
                 console.log("Pedidos guardados localmente. Se sincronizarán cuando la conexión se restablezca.");
 
