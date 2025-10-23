@@ -11,10 +11,13 @@ const DB_VERSION = 1;
 /*  Función que obtiene la base de datos para poder modificarla */
 function getIndexedDB() {
     return new Promise((resolve, reject) => {
+        // Abre la base de datos que está en indexedDB
         const request = indexedDB.open(DB_NAME, DB_VERSION);
 
+        // Sino da error, resuelve la request
         request.onsuccess = (e) =>resolve(e.target.result)
 
+        // Si da error, aborta el intento de entrar
         request.onerror = (e) =>{
             console.error("Error al abrir IndexedDB:", e.target.error);
             reject(e.target.error)
@@ -25,15 +28,22 @@ function getIndexedDB() {
 /*  Función usada para borrar todos los datos y 
     referencias que guarda odoo  offline*/
 async function del_odoo_local(orders, posStore){
+    
+    // Un bucle que es utilizado para borrar 
+    // las referencias de la base de datos de odoo
     orders.forEach(order => {
                     posStore.db.remove_order(order.id);
                     console.log(`Pedido ${order.id} eliminado forzosamente de la BD local de Odoo.`);
                 });
 
+    // Este apartado usa el nombre de paidOrderKey en 
+    // el local storage para borrar esa referencia
     const paidOrdersKey = posStore.db.name + '_orders';
     localStorage.removeItem(paidOrdersKey);
     console.log(`Clave '${paidOrdersKey}' eliminada del Local Storage.`);
-
+    
+    // Este apartado usa la referencia del pendingOperationsKEt 
+    // para borrarla ene l local storage
     const pendingOperationsKey = posStore.db.name + '_pending_operations';
     localStorage.removeItem(pendingOperationsKey);
     console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
