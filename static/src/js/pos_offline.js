@@ -41,16 +41,12 @@ async function del_odoo_local(orders, posStore){
 async function check_offline_orders(offline_orders) {
     console.log("Comprobando conexión y pedidos pendientes en IndexedDB...");
 
-    if(!navigator.onLine){
-        console.warn("Sin conexión a Internet. Guardando pedidos en IndexedDB.");
-        return;
-    }
-
     if(offline_orders.length === 0){
         console.log("No hay pedidos pendientes en IndexedDB.");
         return;
     }
     
+    console.log(`Encontrados ${offline_orders.length} pedidos pendientes en IndexedDB. Intentando sincronizar...`);
 }
 
 async function _save_orders_to_indexeddb(orders){
@@ -147,13 +143,15 @@ patch(PosStore.prototype, {
 
     async sync_offline_orders(){
 
+        if(!navigator.onLine){
+            console.warn("Sin conexión a Internet. Guardando pedidos en IndexedDB.");
+            return;
+        }
 
         const offline_orders = await _get_orders_from_indexeddb()
 
         await check_offline_orders(offline_orders)
         
-        console.log(`Encontrados ${offline_orders.length} pedidos pendientes en IndexedDB. Intentando sincronizar...`);
-
         const orders_to_sync = offline_orders.map(order_data => ({
             ...order_data,
             id: order_data.uid,
