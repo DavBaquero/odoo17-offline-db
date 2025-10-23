@@ -7,6 +7,8 @@ var request = indexedDB.open("POS_Order",1);
     crea la tabla que va a usar para guardar datos */
 request.onupgradeneeded = function(e) {
     console.log("Creando o abriendo la DB POS_Order");
+    
+    // Crea la tabla que va a usar como referencia para guardar los datos
     e.target.result.createObjectStore("store1",{keyPath:"id"});
 };
 
