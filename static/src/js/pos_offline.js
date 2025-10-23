@@ -22,6 +22,22 @@ function getIndexedDB() {
     
 }
 
+async function del_odoo_local(orders, posStore){
+
+    orders.forEach(order => {
+                    posStore.db.remove_order(order.id);
+                    console.log(`Pedido ${order.id} eliminado forzosamente de la BD local de Odoo.`);
+                });
+
+    const paidOrdersKey = posStore.db.name + '_orders';
+    localStorage.removeItem(paidOrdersKey);
+    console.log(`Clave '${paidOrdersKey}' eliminada del Local Storage.`);
+
+    const pendingOperationsKey = posStore.db.name + '_pending_operations';
+    localStorage.removeItem(pendingOperationsKey);
+    console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
+}
+
 async function _save_orders_to_indexeddb(orders){
     try{
         const db = await getIndexedDB();
@@ -140,7 +156,6 @@ patch(PosStore.prototype, {
 
         try{
             const result = await super._flush_orders(orders_to_sync, {timeout: 5000, shadow: false});
-            debugger
             if(result){
                 console.log("Sincronizacion completada, Vaciando indexedDB...");
                 await _clear_indexeddb_orders();
@@ -153,7 +168,6 @@ patch(PosStore.prototype, {
     },
 
     async _flush_orders(orders, options){
-        
         try{
 
             return await super._flush_orders(orders,options)
@@ -162,22 +176,10 @@ patch(PosStore.prototype, {
             if (error.message.includes('Connection')){
 
                 console.warn("Conexión perdida. Guardando pedidos en IndexedDB.");
-                
 
                 await _save_orders_to_indexeddb(orders);              
                 
-                orders.forEach(order => {
-                    this.db.remove_order(order.id);
-                    console.log(`Pedido ${order.id} eliminado forzosamente de la BD local de Odoo.`);
-                });
-
-                const paidOrdersKey = this.db.name + '_orders';
-                localStorage.removeItem(paidOrdersKey);
-                console.log(`Clave '${paidOrdersKey}' eliminada del Local Storage.`);
-
-                const pendingOperationsKey = this.db.name + '_pending_operations';
-                localStorage.removeItem(pendingOperationsKey);
-                console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
+                await del_odoo_local(orders,this);
 
                 console.log("Pedidos guardados localmente. Se sincronizarán cuando la conexión se restablezca.");
 
