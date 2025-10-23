@@ -3,27 +3,28 @@
 import { PosStore } from "@point_of_sale/app/store/pos_store";
 import { patch } from "@web/core/utils/patch";
 
-console.log("Loading OfflineSync for Odoo 17 POS");
-
-
+/*  Valores constantes de referencia a la base de datos */
 const DB_NAME = "POS_Order";
 const STORE_NAME = "store1";
 const DB_VERSION = 1;
 
+/*  Función que obtiene la base de datos para poder modificarla */
 function getIndexedDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
+
         request.onsuccess = (e) =>resolve(e.target.result)
+
         request.onerror = (e) =>{
             console.error("Error al abrir IndexedDB:", e.target.error);
             reject(e.target.error)
         }
     });
-    
 }
 
+/*  Función usada para borrar todos los datos y 
+    referencias que guarda odoo  offline*/
 async function del_odoo_local(orders, posStore){
-
     orders.forEach(order => {
                     posStore.db.remove_order(order.id);
                     console.log(`Pedido ${order.id} eliminado forzosamente de la BD local de Odoo.`);
@@ -38,6 +39,7 @@ async function del_odoo_local(orders, posStore){
     console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
 }
 
+/*  Función usada para contar el número de ordenes offline que hay */
 async function check_offline_orders(offline_orders) {
     console.log("Comprobando conexión y pedidos pendientes en IndexedDB...");
 
@@ -45,21 +47,23 @@ async function check_offline_orders(offline_orders) {
         console.log("No hay pedidos pendientes en IndexedDB.");
         return;
     }
-    
+
     console.log(`Encontrados ${offline_orders.length} pedidos pendientes en IndexedDB. Intentando sincronizar...`);
 }
 
+/*  Función utilizada para guardar las ordenes 
+    cuando no hay conexión en indexedDB*/
 async function _save_orders_to_indexeddb(orders){
     try{
         const db = await getIndexedDB();
         return new Promise((resolve, reject) => {
-            
             const transaction = db.transaction([STORE_NAME],"readwrite");
             const store = transaction.objectStore(STORE_NAME);
 
             orders.forEach(order => {
                 store.put({id: order.id, data: order.data});
             });
+
             transaction.oncomplete = () =>{
                 console.log(`Ordenes indexadas:  ${orders.length}`);
                 resolve();
@@ -76,6 +80,8 @@ async function _save_orders_to_indexeddb(orders){
     }
 }
 
+/*  Se utiliza para borrar los datos que del indexedDB
+    en el momento que se sincronizan con la base de datos de odoo */
 async function _clear_indexeddb_orders(){
     try{
         const db = await getIndexedDB();
@@ -98,6 +104,8 @@ async function _clear_indexeddb_orders(){
     }
 }
 
+/*  Se utiliza para obtener todas las ordenes 
+    que están en indexedDB */
 async function _get_orders_from_indexeddb(){
     try{
         const db = await getIndexedDB();
@@ -129,6 +137,8 @@ async function _get_orders_from_indexeddb(){
 
 patch(PosStore.prototype, {
     
+    /*  Sobrescritura del setup, para cuando esté online, 
+        use sync_offline_orders para sicronizar los datos */
     async setup(...args){
 
         await super.setup(...args);
@@ -141,6 +151,8 @@ patch(PosStore.prototype, {
 
     },
 
+    /*  Sobre escritura de sync_offline_orders, 
+        coge todos los pedidos sin sicronizar y los sincroniza */
     async sync_offline_orders(){
 
         if(!navigator.onLine){
@@ -170,7 +182,8 @@ patch(PosStore.prototype, {
             console.error("Error durante la sincronización de pedidos offline:", error);
         }
     },
-
+    /*  Sobrescritura de _flush_orders, intenta subir la orden, 
+        sino hay conexión, usa el indexedDB para guardar los pedidos */
     async _flush_orders(orders, options){
         try{
 
