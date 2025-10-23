@@ -109,20 +109,20 @@ async function _clear_indexeddb_orders(){
         // Coge la referencia de la base de datos.
         const db = await getIndexedDB();
         return new Promise((resolve, reject) => {
-            // Comienza una transacción a la tabla de la base
+            // Comienza una transacción a la tabla de la base.
             const transaction = db.transaction([STORE_NAME],"readwrite");
             const store = transaction.objectStore(STORE_NAME);
 
-            // Vacía el indexedDB
+            // Vacía el indexedDB.
             const clearRequest = store.clear();
 
-            // Sino da error, resuelve la transacción
+            // Sino da error, resuelve la transacción.
             clearRequest.onsuccess = () =>{
                 console.log("Almacén de IndexedDB vaciado con éxito.");
                 resolve();
             };
 
-            // Si da error, aborta la transacción
+            // Si da error, aborta la transacción.
             clearRequest.onerror = (e) =>{
                 console.error("Error al vaciar la BD");
                 reject(e);
@@ -135,24 +135,24 @@ async function _clear_indexeddb_orders(){
 }
 
 /*  Se utiliza para obtener todas las ordenes 
-    que están en indexedDB */
+    que están en indexedDB. */
 async function _get_orders_from_indexeddb(){
     try{
         // Coge la referencia de la base de datos.
         const db = await getIndexedDB();
         return new Promise((resolve, reject) => {
 
-            // Comienza una transacción en la base de datos
+            // Comienza una transacción en la base de datos.
             const transaction = db.transaction([STORE_NAME], "readonly");
             const store = transaction.objectStore(STORE_NAME);
 
             // Creamos una lista que va a ser 
-            // todos los pedidos de la base de datos
+            // todos los pedidos de la base de datos.
             const orders = []; 
 
             // Usamos un cursor que va leyendo todos los pedidos 
             // y los va añadiendo a la lista, cuando no quedan, 
-            // resulve la transacción 
+            // resulve la transacción.
             store.openCursor().onsuccess = (event) => {
                 const cursor = event.target.result;
                 if (cursor) {
@@ -163,7 +163,7 @@ async function _get_orders_from_indexeddb(){
                 }
             };
 
-            // Si da error, aborta la transacción
+            // Si da error, aborta la transacción.
             transaction.onerror = (e) =>{
                 console.error("Error al recuperar de la BD");
                 reject(e);
@@ -178,32 +178,34 @@ async function _get_orders_from_indexeddb(){
 patch(PosStore.prototype, {
     
     /*  Sobrescritura del setup, para cuando esté online, 
-        use sync_offline_orders para sicronizar los datos */
+        use sync_offline_orders para sicronizar los datos. */
     async setup(...args){
-
+        
+        // Sobrescribe el método setup.
         await super.setup(...args);
 
         console.log("PosStore: Configurando sincronización de pedidos offline...");
 
+        // Añadimos un evento al setup, que enlaza el setup
+        // con la función sync_offline_orders.
         window.addEventListener('online', this.sync_offline_orders.bind(this));
 
+        // Ejecuta la sincronización.
         this.sync_offline_orders();
 
     },
 
     /*  Sobre escritura de sync_offline_orders, 
-        coge todos los pedidos sin sicronizar y los sincroniza */
+        coge todos los pedidos sin sicronizar y los sincroniza. */
     async sync_offline_orders(){
-
-        if(!navigator.onLine){
-            console.warn("Sin conexión a Internet. Guardando pedidos en IndexedDB.");
-            return;
-        }
-
+ 
+        // Crea una constante de todos los pedidos que se obtienen del indexedDB.
         const offline_orders = await _get_orders_from_indexeddb()
 
+        // Verificamos cuantos pedidos son.
         await check_offline_orders(offline_orders)
         
+        // Prepara los pedidos para _flush_orders: asegura el id y añade export_as_JSON.
         const orders_to_sync = offline_orders.map(order_data => ({
             ...order_data,
             id: order_data.uid,
@@ -211,35 +213,48 @@ patch(PosStore.prototype, {
         }));
 
         try{
+            // Le pasamos todos los pedidos que faltan por sicronizar a _flush_order.
             const result = await super._flush_orders(orders_to_sync, {timeout: 5000, shadow: false});
             if(result){
+
+                // Si funciona, vacía el indexedDB, para evitar duplicados en caso de que se caiga otra vez.
                 console.log("Sincronizacion completada, Vaciando indexedDB...");
                 await _clear_indexeddb_orders();
             } else{
+
+                // Si falla, continuan los datos en indexedDB.
                 console.error("Falló la sincronización, se mantedrán en indexedDB.", result.failed);
             }
         }catch(error){
             console.error("Error durante la sincronización de pedidos offline:", error);
         }
     },
+
     /*  Sobrescritura de _flush_orders, intenta subir la orden, 
-        sino hay conexión, usa el indexedDB para guardar los pedidos */
+        sino hay conexión, usa el indexedDB para guardar los pedidos. */
     async _flush_orders(orders, options){
         try{
 
+            // Si hay conexión, envia los pedidos de manera habitual.
             return await super._flush_orders(orders,options)
 
         }catch(error){
+            // Si el error es de conexión
             if (error.message.includes('Connection')){
 
                 console.warn("Conexión perdida. Guardando pedidos en IndexedDB.");
-
+                
+                // Guarda los pedidos en el indexedDB
                 await _save_orders_to_indexeddb(orders);              
                 
+                // Borra las refernecias de local, 
+                // para evitar que haya no se sature
+                // la memoria limitada del localstorage
                 await del_odoo_local(orders,this);
 
                 console.log("Pedidos guardados localmente. Se sincronizarán cuando la conexión se restablezca.");
-
+                
+                // Devuelve que ha sido correcto el funcionamiento.
                 return{ successful: orders.map(o => ({id: o.id})), 
                 failed: [] };
             } else{
