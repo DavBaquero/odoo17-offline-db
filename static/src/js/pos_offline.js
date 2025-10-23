@@ -72,7 +72,7 @@ async function _save_orders_to_indexeddb(orders){
         const db = await getIndexedDB();
         return new Promise((resolve, reject) => {
 
-            // Comienza una transacción a la tabla de la base
+            // Comienza una transacción a la tabla de la base.
             const transaction = db.transaction([STORE_NAME],"readwrite");
             const store = transaction.objectStore(STORE_NAME);
             
@@ -239,17 +239,17 @@ patch(PosStore.prototype, {
             return await super._flush_orders(orders,options)
 
         }catch(error){
-            // Si el error es de conexión
+            // Si el error es de conexión.
             if (error.message.includes('Connection')){
 
                 console.warn("Conexión perdida. Guardando pedidos en IndexedDB.");
                 
-                // Guarda los pedidos en el indexedDB
+                // Guarda los pedidos en el indexedDB.
                 await _save_orders_to_indexeddb(orders);              
                 
                 // Borra las refernecias de local, 
                 // para evitar que haya no se sature
-                // la memoria limitada del localstorage
+                // la memoria limitada del localstorage.
                 await del_odoo_local(orders,this);
 
                 console.log("Pedidos guardados localmente. Se sincronizarán cuando la conexión se restablezca.");
