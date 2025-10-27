@@ -8,173 +8,6 @@ const DB_NAME = "POS_Order";
 const STORE_NAME = "store1";
 const DB_VERSION = 1;
 
-/*  Función que obtiene la base de datos para poder modificarla. */
-function getIndexedDB() {
-    return new Promise((resolve, reject) => {
-        // Abre la base de datos que está en indexedDB.
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-        // Sino da error, resuelve la request.
-        request.onsuccess = (e) =>resolve(e.target.result)
-
-        // Si da error, aborta el intento de entrar.
-        request.onerror = (e) =>{
-            console.error("Error al abrir IndexedDB:", e.target.error);
-            reject(e.target.error)
-        }
-    });
-}
-
-/*  Función usada para borrar todos los datos y 
-    referencias que guarda odoo  offline. */
-async function del_odoo_local(orders, posStore){
-    
-    // Un bucle que es utilizado para borrar 
-    // las referencias de la base de datos de odoo.
-    orders.forEach(order => {
-                    posStore.db.remove_order(order.id);
-                    console.log(`Pedido ${order.id} eliminado forzosamente de la BD local de Odoo.`);
-                });
-
-    // Este apartado usa el nombre de paidOrderKey en 
-    // el local storage para borrar esa referencia.
-    const paidOrdersKey = posStore.db.name + '_orders';
-    localStorage.removeItem(paidOrdersKey);
-    console.log(`Clave '${paidOrdersKey}' eliminada del Local Storage.`);
-    
-    // Este apartado usa la referencia del pendingOperationsKEt 
-    // para borrarla ene l local storage.
-    const pendingOperationsKey = posStore.db.name + '_pending_operations';
-    localStorage.removeItem(pendingOperationsKey);
-    console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
-}
-
-/*  Función usada para contar el número de ordenes offline que hay. */
-async function check_offline_orders(offline_orders) {
-    console.log("Comprobando conexión y pedidos pendientes en IndexedDB...");
-
-    // Comprueba que haya al menos un pedido.
-    if(offline_orders.length === 0){
-        console.log("No hay pedidos pendientes en IndexedDB.");
-        return;
-    }
-
-    // Imprimir el número de pedidos que hay.
-    console.log(`Encontrados ${offline_orders.length} pedidos pendientes en IndexedDB. Intentando sincronizar...`);
-}
-
-/*  Función utilizada para guardar las ordenes 
-    cuando no hay conexión en indexedDB. */
-async function _save_orders_to_indexeddb(orders){
-    try{
-
-        // Coge la referencia de la base de datos.
-        const db = await getIndexedDB();
-        return new Promise((resolve, reject) => {
-
-            // Comienza una transacción a la tabla de la base.
-            const transaction = db.transaction([STORE_NAME],"readwrite");
-            const store = transaction.objectStore(STORE_NAME);
-            
-            // Por cada pedido que tiene la base de datos, 
-            // guarda la id y sus datos en el indexed.
-            orders.forEach(order => {
-                store.put({id: order.id, data: order.data});
-            });
-
-            // Si la transacción se completa, 
-            // pone un log con el numero de ordenes indexadas.
-            transaction.oncomplete = () =>{
-                console.log(`Ordenes indexadas:  ${orders.length}`);
-                resolve();
-            };
-
-            // Si la transacción da error, 
-            // aborta la transacción.
-            transaction.onerror = (e) =>{
-                console.error("Error al indexar en la BD");
-                reject(e);
-            };
-        });
-    }catch(e){
-        console.error("Fallo crítico al acceder o guardar en IndexedDB:", e);
-        throw new Error("IndexedDB save failed."); 
-    }
-}
-
-/*  Se utiliza para borrar los datos que del indexedDB
-    en el momento que se sincronizan con la base de datos de odoo. */
-async function _clear_indexeddb_orders(){
-    try{
-        // Coge la referencia de la base de datos.
-        const db = await getIndexedDB();
-        return new Promise((resolve, reject) => {
-            // Comienza una transacción a la tabla de la base.
-            const transaction = db.transaction([STORE_NAME],"readwrite");
-            const store = transaction.objectStore(STORE_NAME);
-
-            // Vacía el indexedDB.
-            const clearRequest = store.clear();
-
-            // Sino da error, resuelve la transacción.
-            clearRequest.onsuccess = () =>{
-                console.log("Almacén de IndexedDB vaciado con éxito.");
-                resolve();
-            };
-
-            // Si da error, aborta la transacción.
-            clearRequest.onerror = (e) =>{
-                console.error("Error al vaciar la BD");
-                reject(e);
-            };
-        });
-    }catch(e){
-        console.error("Fallo crítico al acceder o guardar en IndexedDB:", e);
-        throw new Error("IndexedDB clear failed.");
-    }
-}
-
-/*  Se utiliza para obtener todas las ordenes 
-    que están en indexedDB. */
-async function _get_orders_from_indexeddb(){
-    try{
-        // Coge la referencia de la base de datos.
-        const db = await getIndexedDB();
-        return new Promise((resolve, reject) => {
-
-            // Comienza una transacción en la base de datos.
-            const transaction = db.transaction([STORE_NAME], "readonly");
-            const store = transaction.objectStore(STORE_NAME);
-
-            // Creamos una lista que va a ser 
-            // todos los pedidos de la base de datos.
-            const orders = []; 
-
-            // Usamos un cursor que va leyendo todos los pedidos 
-            // y los va añadiendo a la lista, cuando no quedan, 
-            // resulve la transacción.
-            store.openCursor().onsuccess = (event) => {
-                const cursor = event.target.result;
-                if (cursor) {
-                    orders.push(cursor.value);
-                    cursor.continue();
-                } else {
-                    resolve(orders);
-                }
-            };
-
-            // Si da error, aborta la transacción.
-            transaction.onerror = (e) =>{
-                console.error("Error al recuperar de la BD");
-                reject(e);
-            };
-        });
-    }catch(e){
-        console.error("Fallo crítico al acceder o guardar en IndexedDB:", e);
-        throw new Error("IndexedDB get failed."); 
-    }
-}
-
 patch(PosStore.prototype, {
     
     /*  Sobrescritura del setup, para cuando esté online, 
@@ -198,7 +31,7 @@ patch(PosStore.prototype, {
     /*  Sobre escritura de sync_offline_orders, 
         coge todos los pedidos sin sicronizar y los sincroniza. */
     async sync_offline_orders(){
- 
+
         // Crea una constante de todos los pedidos que se obtienen del indexedDB.
         const offline_orders = await _get_orders_from_indexeddb()
 
@@ -245,7 +78,7 @@ patch(PosStore.prototype, {
                 console.warn("Conexión perdida. Guardando pedidos en IndexedDB.");
                 
                 // Guarda los pedidos en el indexedDB.
-                await _save_orders_to_indexeddb(orders);              
+                await _save_orders_to_indexeddb(orders);                 
                 
                 // Borra las refernecias de local, 
                 // para evitar que haya no se sature
@@ -261,5 +94,172 @@ patch(PosStore.prototype, {
                 throw error;
             }
         }
-    },    
+    },     
 });
+
+/*  Se utiliza para obtener todas las ordenes 
+    que están en indexedDB. */
+async function _get_orders_from_indexeddb(){
+    try{
+        // Coge la referencia de la base de datos.
+        const db = await getIndexedDB();
+        return new Promise((resolve, reject) => {
+
+            // Comienza una transacción en la base de datos.
+            const transaction = db.transaction([STORE_NAME], "readonly");
+            const store = transaction.objectStore(STORE_NAME);
+
+            // Creamos una lista que va a ser 
+            // todos los pedidos de la base de datos.
+            const orders = []; 
+
+            // Usamos un cursor que va leyendo todos los pedidos 
+            // y los va añadiendo a la lista, cuando no quedan, 
+            // resulve la transacción.
+            store.openCursor().onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    orders.push(cursor.value);
+                    cursor.continue();
+                } else {
+                    resolve(orders);
+                }
+            };
+
+            // Si da error, aborta la transacción.
+            transaction.onerror = (e) =>{
+                console.error("Error al recuperar de la BD");
+                reject(e);
+            };
+        });
+    }catch(e){
+        console.error("Fallo crítico al acceder o guardar en IndexedDB:", e);
+        throw new Error("IndexedDB get failed."); 
+    }
+}
+
+/*  Función que obtiene la base de datos para poder modificarla. */
+function getIndexedDB() {
+    return new Promise((resolve, reject) => {
+        // Abre la base de datos que está en indexedDB.
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        // Sino da error, resuelve la request.
+        request.onsuccess = (e) =>resolve(e.target.result)
+
+        // Si da error, aborta el intento de entrar.
+        request.onerror = (e) =>{
+            console.error("Error al abrir IndexedDB:", e.target.error);
+            reject(e.target.error)
+        }
+    });
+}
+
+/*  Función usada para contar el número de ordenes offline que hay. */
+async function check_offline_orders(offline_orders) {
+    console.log("Comprobando conexión y pedidos pendientes en IndexedDB...");
+
+    // Comprueba que haya al menos un pedido.
+    if(offline_orders.length === 0){
+        console.log("No hay pedidos pendientes en IndexedDB.");
+        return;
+    }
+
+    // Imprimir el número de pedidos que hay.
+    console.log(`Encontrados ${offline_orders.length} pedidos pendientes en IndexedDB. Intentando sincronizar...`);
+}
+
+/*  Se utiliza para borrar los datos que del indexedDB
+    en el momento que se sincronizan con la base de datos de odoo. */
+async function _clear_indexeddb_orders(){
+    try{
+        // Coge la referencia de la base de datos.
+        const db = await getIndexedDB();
+        return new Promise((resolve, reject) => {
+            // Comienza una transacción a la tabla de la base.
+            const transaction = db.transaction([STORE_NAME],"readwrite");
+            const store = transaction.objectStore(STORE_NAME);
+
+            // Vacía el indexedDB.
+            const clearRequest = store.clear();
+
+            // Sino da error, resuelve la transacción.
+            clearRequest.onsuccess = () =>{
+                console.log("Almacén de IndexedDB vaciado con éxito.");
+                resolve();
+            };
+
+            // Si da error, aborta la transacción.
+            clearRequest.onerror = (e) =>{
+                console.error("Error al vaciar la BD");
+                reject(e);
+            };
+        });
+    }catch(e){
+        console.error("Fallo crítico al acceder o guardar en IndexedDB:", e);
+        throw new Error("IndexedDB clear failed.");
+    }
+}
+
+/*  Función utilizada para guardar las ordenes 
+    cuando no hay conexión en indexedDB. */
+async function _save_orders_to_indexeddb(orders){
+    try{
+
+        // Coge la referencia de la base de datos.
+        const db = await getIndexedDB();
+        return new Promise((resolve, reject) => {
+
+            // Comienza una transacción a la tabla de la base.
+            const transaction = db.transaction([STORE_NAME],"readwrite");
+            const store = transaction.objectStore(STORE_NAME);
+            
+            // Por cada pedido que tiene la base de datos, 
+            // guarda la id y sus datos en el indexed.
+            orders.forEach(order => {
+                store.put({id: order.id, data: order.data});
+            });
+
+            // Si la transacción se completa, 
+            // pone un log con el numero de ordenes indexadas.
+            transaction.oncomplete = () =>{
+                console.log(`Ordenes indexadas:  ${orders.length}`);
+                resolve();
+            };
+
+            // Si la transacción da error, 
+            // aborta la transacción.
+            transaction.onerror = (e) =>{
+                console.error("Error al indexar en la BD");
+                reject(e);
+            };
+        });
+    }catch(e){
+        console.error("Fallo crítico al acceder o guardar en IndexedDB:", e);
+        throw new Error("IndexedDB save failed."); 
+    }
+}
+
+/*  Función usada para borrar todos los datos y 
+    referencias que guarda odoo  offline. */
+async function del_odoo_local(orders, posStore){
+    
+    // Un bucle que es utilizado para borrar 
+    // las referencias de la base de datos de odoo.
+    orders.forEach(order => {
+                posStore.db.remove_order(order.id);
+                console.log(`Pedido ${order.id} eliminado forzosamente de la BD local de Odoo.`);
+            });
+
+    // Este apartado usa el nombre de paidOrderKey en 
+    // el local storage para borrar esa referencia.
+    const paidOrdersKey = posStore.db.name + '_orders';
+    localStorage.removeItem(paidOrdersKey);
+    console.log(`Clave '${paidOrdersKey}' eliminada del Local Storage.`);
+    
+    // Este apartado usa la referencia del pendingOperationsKEt 
+    // para borrarla ene l local storage.
+    const pendingOperationsKey = posStore.db.name + '_pending_operations';
+    localStorage.removeItem(pendingOperationsKey);
+    console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
+}
