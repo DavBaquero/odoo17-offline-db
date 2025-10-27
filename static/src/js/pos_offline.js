@@ -46,8 +46,13 @@ patch(PosStore.prototype, {
         }));
 
         try{
+
+            // Calcula el tiempo de espera según el número de pedidos.
+            const tiempo = await increment_counter();
+            console.log(`Esperando ${tiempo} segundos antes de sincronizar...`);
+            
             // Le pasamos todos los pedidos que faltan por sicronizar a _flush_order.
-            const result = await super._flush_orders(orders_to_sync, {timeout: 5000, shadow: false});
+            const result = await super._flush_orders(orders_to_sync, {timeout: tiempo, shadow: false});
             if(result){
 
                 // Si funciona, vacía el indexedDB, para evitar duplicados en caso de que se caiga otra vez.
@@ -214,15 +219,18 @@ async function _save_orders_to_indexeddb(orders){
             const transaction = db.transaction([STORE_NAME],"readwrite");
             const store = transaction.objectStore(STORE_NAME);
             
+            let orders_indexed = 0;
             // Por cada pedido que tiene la base de datos, 
             // guarda la id y sus datos en el indexed.
             orders.forEach(order => {
                 store.put({id: order.id, data: order.data});
+                orders_indexed++;
             });
 
             // Si la transacción se completa, 
             // pone un log con el numero de ordenes indexadas.
             transaction.oncomplete = () =>{
+                console.log(`Ordenes indexadas:  ${orders_indexed}`);
                 console.log(`Ordenes indexadas:  ${orders.length}`);
                 resolve();
             };
@@ -262,4 +270,20 @@ async function del_odoo_local(orders, posStore){
     const pendingOperationsKey = posStore.db.name + '_pending_operations';
     localStorage.removeItem(pendingOperationsKey);
     console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
+}
+
+/*  Función usada para incrementar el tiempo según los pedidos. */
+async function increment_counter(){
+    try{
+        // Coge todas las ordenes del indexedDB.
+        const ordenes = await _get_orders_from_indexeddb();
+
+        // Por cada orden, suma 3 segundos.
+        const tiempo = ordenes.length * 3;
+
+        // Devuelve el tiempo total.
+        return tiempo;
+    } catch(e){
+        console.error("Error al incrementar el contador de pedidos offline:", e);
+    }
 }
