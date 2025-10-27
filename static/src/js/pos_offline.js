@@ -46,8 +46,11 @@ patch(PosStore.prototype, {
         }));
 
         try{
+
+            // Calcula el tiempo de espera según el número de pedidos.
             const tiempo = await increment_counter();
             console.log(`Esperando ${tiempo} segundos antes de sincronizar...`);
+            
             // Le pasamos todos los pedidos que faltan por sicronizar a _flush_order.
             const result = await super._flush_orders(orders_to_sync, {timeout: tiempo, shadow: false});
             if(result){
@@ -269,10 +272,16 @@ async function del_odoo_local(orders, posStore){
     console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
 }
 
+/*  Función usada para incrementar el tiempo según los pedidos. */
 async function increment_counter(){
     try{
+        // Coge todas las ordenes del indexedDB.
         const ordenes = await _get_orders_from_indexeddb();
+
+        // Por cada orden, suma 3 segundos.
         const tiempo = ordenes.length * 3;
+
+        // Devuelve el tiempo total.
         return tiempo;
     } catch(e){
         console.error("Error al incrementar el contador de pedidos offline:", e);
