@@ -44,20 +44,27 @@ patch(PosStore.prototype, {
             id: order_data.uid,
             export_as_JSON: () => order_data.data,
         }));
-
+        for(const order of orders_to_sync){
+            this.db.add_order(order);
+        }
         try{
 
             // Calcula el tiempo de espera según el número de pedidos.
             const tiempo = await increment_counter();
             console.log(`Esperando ${tiempo} segundos antes de sincronizar...`);
-            
-            // Le pasamos todos los pedidos que faltan por sicronizar a _flush_order.
-            const result = await super._flush_orders(orders_to_sync, {timeout: tiempo, shadow: false});
-            if(result){
 
+            const result = await super._flush_orders(orders_to_sync, {timeout: tiempo, shadow: false});
+            
+            if(result){
                 // Si funciona, vacía el indexedDB, para evitar duplicados en caso de que se caiga otra vez.
                 console.log("Sincronizacion completada, Vaciando indexedDB...");
                 await _clear_indexeddb_orders();
+                for(const order of orders_to_sync){
+                    order.uid = order.data.uid;
+                    console.log(`Pedido ${order.uid} sincronizado correctamente, eliminando de la BD local de Odoo.`);
+                    this.db.remove_order(order.uid);
+                }
+                
             } else{
 
                 // Si falla, continuan los datos en indexedDB.
@@ -82,10 +89,11 @@ patch(PosStore.prototype, {
 
                 console.warn("Conexión perdida. Guardando pedidos en IndexedDB.");
                 
+            
                 // Guarda los pedidos en el indexedDB.
-                await _save_orders_to_indexeddb(orders);                 
-                
-                // Borra las refernecias de local, 
+                await _save_orders_to_indexeddb(orders);
+
+                // Borra las refernecias de local,
                 // para evitar que haya no se sature
                 // la memoria limitada del localstorage.
                 await del_odoo_local(orders,this);
@@ -93,7 +101,7 @@ patch(PosStore.prototype, {
                 console.log("Pedidos guardados localmente. Se sincronizarán cuando la conexión se restablezca.");
                 
                 // Devuelve que ha sido correcto el funcionamiento.
-                return{ successful: orders.map(o => ({id: o.id})), 
+                return{ successful: orders.map(o =>({id: o.id, uid: o.uid})), 
                 failed: [] };
             } else{
                 throw error;
@@ -223,7 +231,7 @@ async function _save_orders_to_indexeddb(orders){
             // Por cada pedido que tiene la base de datos, 
             // guarda la id y sus datos en el indexed.
             orders.forEach(order => {
-                store.put({id: order.id, data: order.data});
+                store.put({id: order.id, uid: order.uid, data: order.data});
                 orders_indexed++;
             });
 
@@ -255,8 +263,8 @@ async function del_odoo_local(orders, posStore){
     // Un bucle que es utilizado para borrar 
     // las referencias de la base de datos de odoo.
     orders.forEach(order => {
-                posStore.db.remove_order(order.id);
-                console.log(`Pedido ${order.id} eliminado forzosamente de la BD local de Odoo.`);
+                posStore.db.remove_order(order.uid);
+                console.log(`Pedido ${order.uid} eliminado forzosamente de la BD local de Odoo.`);
             });
 
     // Este apartado usa el nombre de paidOrderKey en 
@@ -279,7 +287,7 @@ async function increment_counter(){
         const ordenes = await _get_orders_from_indexeddb();
 
         // Por cada orden, suma 3 segundos.
-        const tiempo = ordenes.length * 3;
+        const tiempo = ordenes.length * 1.5;
 
         // Devuelve el tiempo total.
         return tiempo;
