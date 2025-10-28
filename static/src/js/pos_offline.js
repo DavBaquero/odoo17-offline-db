@@ -44,24 +44,30 @@ patch(PosStore.prototype, {
             id: order_data.uid,
             export_as_JSON: () => order_data.data,
         }));
+
+        // Añade los pedidos a la base de datos local de Odoo, para que los reconozca.
         for(const order of orders_to_sync){
             this.db.add_order(order);
         }
+
         try{
 
             // Calcula el tiempo de espera según el número de pedidos.
             const tiempo = await increment_counter();
             console.log(`Esperando ${tiempo} segundos antes de sincronizar...`);
-
+              
+            // Intenta sincronizar los pedidos.
             const result = await super._flush_orders(orders_to_sync, {timeout: tiempo, shadow: false});
             
             if(result){
                 // Si funciona, vacía el indexedDB, para evitar duplicados en caso de que se caiga otra vez.
                 console.log("Sincronizacion completada, Vaciando indexedDB...");
                 await _clear_indexeddb_orders();
+
+                // Elimina los pedidos de la base de datos local de Odoo,
+                // para evitar duplicados y no pida sincronizar los pedidos.
                 for(const order of orders_to_sync){
                     order.uid = order.data.uid;
-                    console.log(`Pedido ${order.uid} sincronizado correctamente, eliminando de la BD local de Odoo.`);
                     this.db.remove_order(order.uid);
                 }
                 
@@ -89,7 +95,6 @@ patch(PosStore.prototype, {
 
                 console.warn("Conexión perdida. Guardando pedidos en IndexedDB.");
                 
-            
                 // Guarda los pedidos en el indexedDB.
                 await _save_orders_to_indexeddb(orders);
 
@@ -287,7 +292,7 @@ async function increment_counter(){
         const ordenes = await _get_orders_from_indexeddb();
 
         // Por cada orden, suma 3 segundos.
-        const tiempo = ordenes.length * 1.5;
+        const tiempo = ordenes.length * 3;
 
         // Devuelve el tiempo total.
         return tiempo;
