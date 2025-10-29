@@ -44,33 +44,32 @@ patch(PosStore.prototype, {
             id: order_data.uid,
             export_as_JSON: () => order_data.data,
         }));
-
-        // Añade los pedidos a la base de datos local de Odoo, para que los reconozca.
-        for(const order of orders_to_sync){
-            this.db.add_order(order);
-        }
+        
 
         try{
-
-            // Calcula el tiempo de espera según el número de pedidos.
-            const tiempo = await increment_counter();
-            console.log(`Esperando ${tiempo} segundos antes de sincronizar...`);
-              
-            // Intenta sincronizar los pedidos.
-            const result = await super._flush_orders(orders_to_sync, {timeout: tiempo, shadow: false});
+            let result = false;
             
+            // Añade los pedidos a la base de datos local de Odoo, para que los reconozca.
+            for(const order of orders_to_sync){
+                // Añade el pedido a la base de datos local de Odoo.
+                this.db.add_order(order);
+                // Intenta subir el pedido.
+                await super._flush_orders([order], {timeout: 5, shadow: false});
+                result = true;
+            }
             if(result){
+                // Si funciona, elimina los pedidos de la base de datos local de Odoo.
+                for(const order of orders_to_sync){
+                    // Se asigna la uid para eliminar correctamente.
+                    order.uid = order.data.uid;
+                    // Elimina el pedido de la base de datos local de Odoo,
+                    // para evitar duplicados y el mensaje de sincronización.
+                    this.db.remove_order(order.uid);
+                }
                 // Si funciona, vacía el indexedDB, para evitar duplicados en caso de que se caiga otra vez.
                 console.log("Sincronizacion completada, Vaciando indexedDB...");
                 await _clear_indexeddb_orders();
-
-                // Elimina los pedidos de la base de datos local de Odoo,
-                // para evitar duplicados y no pida sincronizar los pedidos.
-                for(const order of orders_to_sync){
-                    order.uid = order.data.uid;
-                    this.db.remove_order(order.uid);
-                }
-                
+                                
             } else{
 
                 // Si falla, continuan los datos en indexedDB.
@@ -283,20 +282,4 @@ async function del_odoo_local(orders, posStore){
     const pendingOperationsKey = posStore.db.name + '_pending_operations';
     localStorage.removeItem(pendingOperationsKey);
     console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
-}
-
-/*  Función usada para incrementar el tiempo según los pedidos. */
-async function increment_counter(){
-    try{
-        // Coge todas las ordenes del indexedDB.
-        const ordenes = await _get_orders_from_indexeddb();
-
-        // Por cada orden, suma 3 segundos.
-        const tiempo = ordenes.length * 3;
-
-        // Devuelve el tiempo total.
-        return tiempo;
-    } catch(e){
-        console.error("Error al incrementar el contador de pedidos offline:", e);
-    }
 }
