@@ -51,23 +51,25 @@ patch(PosStore.prototype, {
             
             // Añade los pedidos a la base de datos local de Odoo, para que los reconozca.
             for(const order of orders_to_sync){
+                // Añade el pedido a la base de datos local de Odoo.
                 this.db.add_order(order);
+                // Intenta subir el pedido.
                 await super._flush_orders([order], {timeout: 5, shadow: false});
                 result = true;
             }
             if(result){
+                // Si funciona, elimina los pedidos de la base de datos local de Odoo.
                 for(const order of orders_to_sync){
+                    // Se asigna la uid para eliminar correctamente.
                     order.uid = order.data.uid;
+                    // Elimina el pedido de la base de datos local de Odoo,
+                    // para evitar duplicados y el mensaje de sincronización.
                     this.db.remove_order(order.uid);
                 }
                 // Si funciona, vacía el indexedDB, para evitar duplicados en caso de que se caiga otra vez.
                 console.log("Sincronizacion completada, Vaciando indexedDB...");
                 await _clear_indexeddb_orders();
-
-                // Elimina los pedidos de la base de datos local de Odoo,
-                // para evitar duplicados y no pida sincronizar los pedidos.
-                
-                
+                                
             } else{
 
                 // Si falla, continuan los datos en indexedDB.
