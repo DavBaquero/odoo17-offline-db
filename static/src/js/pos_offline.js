@@ -48,6 +48,12 @@ patch(PosStore.prototype, {
 
         try{
             let result = false;
+
+            // Si no hay pedidos, sale de la función.
+            if(offline_orders.length === 0){
+                console.log("No hay pedidos para sincronizar.");
+                return;
+            }
             
             // Añade los pedidos a la base de datos local de Odoo, para que los reconozca.
             for(const order of orders_to_sync){
