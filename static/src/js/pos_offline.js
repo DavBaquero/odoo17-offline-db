@@ -48,6 +48,10 @@ patch(PosStore.prototype, {
 
         try{
             let result = false;
+
+            if(offline_orders.length === 0){
+                result = true
+            }
             
             // Añade los pedidos a la base de datos local de Odoo, para que los reconozca.
             for(const order of orders_to_sync){
@@ -57,7 +61,10 @@ patch(PosStore.prototype, {
                 await super._flush_orders([order], {timeout: 5, shadow: false});
                 result = true;
             }
-            if(result){
+
+            if(result && offline_orders.length === 0){
+                console.log("Módulo funcionando")
+            }else if(result){
                 // Si funciona, elimina los pedidos de la base de datos local de Odoo.
                 for(const order of orders_to_sync){
                     // Se asigna la uid para eliminar correctamente.
@@ -70,8 +77,7 @@ patch(PosStore.prototype, {
                 console.log("Sincronizacion completada, Vaciando indexedDB...");
                 await _clear_indexeddb_orders();
                                 
-            } else{
-
+            } else {
                 // Si falla, continuan los datos en indexedDB.
                 console.error("Falló la sincronización, se mantedrán en indexedDB.", result.failed);
             }
