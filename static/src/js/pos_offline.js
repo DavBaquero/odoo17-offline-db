@@ -45,51 +45,60 @@ patch(PosStore.prototype, {
             export_as_JSON: () => order_data.data,
         }));
 
-        const time = await time_sync();
-        const start = Date.now();
-        let elapsed = 0;
-        while(Date.now() < start + time){
-            elapsed++;
-            console.log(`Tiempo transcurrido: ${elapsed} s`);
-            // Espera hasta que pase el tiempo.
-            await new Promise(resolve => setTimeout(resolve, 1000));
+        let result = false;
+
+        // Si no hay pedidos, sale de la función.
+        if(offline_orders.length === 0){
+            console.log("No hay pedidos para sincronizar.");
+            return;
         }
+
+        // Marca el tiempo de inicio y el tiempo máximo de sincronización.
+        const inicio = Date.now();
+        let tiempo = await time_sync();
         
 
+        console.log(`Iniciando sincronización durante ${tiempo / 1000} segundos...`);
+
         try{
-            let result = false;
-
-            // Si no hay pedidos, sale de la función.
-            if(offline_orders.length === 0){
-                console.log("No hay pedidos para sincronizar.");
-                return;
-            }
-            
-            // Añade los pedidos a la base de datos local de Odoo, para que los reconozca.
-            for(const order of orders_to_sync){
-                // Añade el pedido a la base de datos local de Odoo.
-                this.db.add_order(order);
-                // Intenta subir el pedido.
-                await super._flush_orders([order], {timeout: 5, shadow: false});
-                result = true;
-            }
-            if(result){
-                // Si funciona, elimina los pedidos de la base de datos local de Odoo.
+            sincronizar: while((true)){
                 for(const order of orders_to_sync){
-                    // Se asigna la uid para eliminar correctamente.
-                    order.uid = order.data.uid;
-                    // Elimina el pedido de la base de datos local de Odoo,
-                    // para evitar duplicados y el mensaje de sincronización.
-                    this.db.remove_order(order.uid);
-                }
-                // Si funciona, vacía el indexedDB, para evitar duplicados en caso de que se caiga otra vez.
-                console.log("Sincronizacion completada, Vaciando indexedDB...");
-                await _clear_indexeddb_orders();
-                                
-            } else{
+                    const ahora = Date.now() - inicio;
+                    if(ahora >= tiempo){
+                        console.log("Tiempo máximo de sincronización alcanzado.");
+                        break sincronizar;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 2000));
 
-                // Si falla, continuan los datos en indexedDB.
-                console.error("Falló la sincronización, se mantedrán en indexedDB.", result.failed);
+                    try{
+                        order.uid = order.data.uid;
+                        this.db.add_order(order);
+                        await super._flush_orders([order], {timeout: 5, shadow: false});
+                        result = true;
+                        await _clear_indexeddb_orders(order.uid);
+
+                        await Promise.resolve(this.db.remove_order(order.uid));
+                    }catch (error) {
+                        console.warn(`Error al sincronizar pedido ${order.uid}:`, error);
+                    }
+                }
+                const pendientes = await _get_orders_from_indexeddb();
+                if (pendientes.length === 0) {
+                    console.log("Todos los pedidos sincronizados. Volviendo a modo online.");
+                    window.dispatchEvent(new Event('online'));
+                    break;
+                } else {
+                    console.log(`Quedan ${pendientes.length} pedidos en cola. Se mantiene modo offline.`);
+                }
+
+                break sincronizar;
+
+            }
+            if ((await _get_orders_from_indexeddb()).length > 0) {
+                console.log("Reintentando sincronización en 30 minutos...");
+                setTimeout(() => {
+                    this.sync_offline_orders();
+                }, 30*60*1000);
             }
         }catch(error){
             console.error("Error durante la sincronización de pedidos offline:", error);
@@ -101,12 +110,31 @@ patch(PosStore.prototype, {
     async _flush_orders(orders, options){
         try{
 
+             // Comprobamos si hay pedidos pendientes en IndexedDB
+            const pendientes = await _get_orders_from_indexeddb();
+
+            if (pendientes.length > 0) {
+                console.warn(`Hay ${pendientes.length} pedidos pendientes. Forzando modo offline.`);
+
+                // Forzamos modo offline antes de intentar nada.
+                window.dispatchEvent(new Event('offline'));
+
+                // Guardamos los pedidos nuevos también en IndexedDB.
+                await _save_orders_to_indexeddb(orders);
+
+                // Limpiamos cache local de Odoo.
+                await del_odoo_local(orders, this);
+
+                // Devolvemos como si se hubiera guardado correctamente.
+                return { successful: orders.map(o => ({ id: o.id, uid: o.uid })), failed: [] };
+            }
+
             // Si hay conexión, envia los pedidos de manera habitual.
             return await super._flush_orders(orders,options)
 
         }catch(error){
             // Si el error es de conexión.
-            if (error.message.includes('Connection')){
+            if (error.message.includes('Connection') || error.message.includes('Network')) {
 
                 console.warn("Conexión perdida. Guardando pedidos en IndexedDB.");
                 
@@ -117,6 +145,10 @@ patch(PosStore.prototype, {
                 // para evitar que haya no se sature
                 // la memoria limitada del localstorage.
                 await del_odoo_local(orders,this);
+
+                // Forzamos el modo offline.
+                window.dispatchEvent(new Event('offline'));
+
 
                 console.log("Pedidos guardados localmente. Se sincronizarán cuando la conexión se restablezca.");
                 
@@ -177,6 +209,14 @@ function getIndexedDB() {
         // Abre la base de datos que está en indexedDB.
         const request = indexedDB.open(DB_NAME, DB_VERSION);
 
+        // Asignamos la id de la base de datos, para poder borrar uno a uno.
+        request.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME, { keyPath: 'uid' });
+            }
+        };
+
         // Sino da error, resuelve la request.
         request.onsuccess = (e) =>resolve(e.target.result)
 
@@ -204,7 +244,7 @@ async function check_offline_orders(offline_orders) {
 
 /*  Se utiliza para borrar los datos que del indexedDB
     en el momento que se sincronizan con la base de datos de odoo. */
-async function _clear_indexeddb_orders(){
+async function _clear_indexeddb_orders(uid){
     try{
         // Coge la referencia de la base de datos.
         const db = await getIndexedDB();
@@ -213,18 +253,17 @@ async function _clear_indexeddb_orders(){
             const transaction = db.transaction([STORE_NAME],"readwrite");
             const store = transaction.objectStore(STORE_NAME);
 
-            // Vacía el indexedDB.
-            const clearRequest = store.clear();
+            // Elimina solo el registro con id ese id
+            const clearRequest = store.delete(uid);
 
             // Sino da error, resuelve la transacción.
             clearRequest.onsuccess = () =>{
-                console.log("Almacén de IndexedDB vaciado con éxito.");
+                console.log(`Pedido con uid ${uid} eliminado de IndexedDB.`);
                 resolve();
             };
 
             // Si da error, aborta la transacción.
             clearRequest.onerror = (e) =>{
-                console.error("Error al vaciar la BD");
                 reject(e);
             };
         });
