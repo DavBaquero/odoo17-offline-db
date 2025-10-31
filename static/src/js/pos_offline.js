@@ -61,7 +61,7 @@ patch(PosStore.prototype, {
             
             // Marca el tiempo de inicio.
             const inicio = Date.now();
-            debugger; sincronizar: while((true)){
+            sincronizar: while((true)){
                 // Procesamos mientras haya pedidos en la cola, evitando mutar
                 // el array durante una iteración for-of.
                 while (orders_to_sync.length > 0) {
