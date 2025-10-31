@@ -62,38 +62,51 @@ patch(PosStore.prototype, {
 
         try{
             sincronizar: while((true)){
+                // Por cada pedido en la lista de pedidos a sincronizar.
                 for(const order of orders_to_sync){
+                    // Comprueba si se ha superado el tiempo máximo de sincronización.
                     const ahora = Date.now() - inicio;
                     if(ahora >= tiempo){
                         console.log("Tiempo máximo de sincronización alcanzado.");
                         break sincronizar;
                     }
+
+                    // Espera 2 segundos entre cada intento para evitar saturar el servidor.
                     await new Promise(resolve => setTimeout(resolve, 2000));
 
                     try{
+                        // Asignamos la uid y lo añadimos a la base de datos.
                         order.uid = order.data.uid;
                         this.db.add_order(order);
-                        await super._flush_orders([order], {timeout: 5, shadow: false});
-                        result = true;
-                        await _clear_indexeddb_orders(order.uid);
 
+                        // Intentamos subir el pedido.
+                        const subido = await super._flush_orders([order], {timeout: 5, shadow: false});
+                        if(subido) {result = true;}
+
+                        // Si se sube correctamente, lo borramos del indexedDB y de la base local de odoo.
+                        await _clear_indexeddb_orders(order.uid);
+                        // También lo eliminamos de la base de datos local de Odoo.
                         await Promise.resolve(this.db.remove_order(order.uid));
+
                     }catch (error) {
                         console.warn(`Error al sincronizar pedido ${order.uid}:`, error);
                     }
                 }
+                // Después de intentar sincronizar todos los pedidos,
+                // comprobamos si quedan pedidos pendientes.
                 const pendientes = await _get_orders_from_indexeddb();
+                // Si no quedan pedidos, salimos del bucle y volvemos a modo online.
                 if (pendientes.length === 0) {
                     console.log("Todos los pedidos sincronizados. Volviendo a modo online.");
                     window.dispatchEvent(new Event('online'));
                     break;
-                } else {
+                } else { // Si quedan pedidos, mantenemos el modo offline.
                     console.log(`Quedan ${pendientes.length} pedidos en cola. Se mantiene modo offline.`);
                 }
-
                 break sincronizar;
-
             }
+            // Si no se han sincronizado todos los pedidos,
+            // programa un nuevo intento en 30 minutos.
             if ((await _get_orders_from_indexeddb()).length > 0) {
                 console.log("Reintentando sincronización en 30 minutos...");
                 setTimeout(() => {
