@@ -44,6 +44,16 @@ patch(PosStore.prototype, {
             id: order_data.uid,
             export_as_JSON: () => order_data.data,
         }));
+
+        const time = await time_sync();
+        const start = Date.now();
+        let elapsed = 0;
+        while(Date.now() < start + time){
+            elapsed++;
+            console.log(`Tiempo transcurrido: ${elapsed} s`);
+            // Espera hasta que pase el tiempo.
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
         
 
         try{
@@ -288,4 +298,15 @@ async function del_odoo_local(orders, posStore){
     const pendingOperationsKey = posStore.db.name + '_pending_operations';
     localStorage.removeItem(pendingOperationsKey);
     console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
+}
+
+async function time_sync(){
+    console.log("Sincronizando hora con el servidor...");
+
+    return new Promise((resolve, reject) => {
+        setTimeout(() => {
+            const time_for_out = 150000; // 150 segundos
+            resolve(time_for_out);
+        }, 1000);
+    });
 }
