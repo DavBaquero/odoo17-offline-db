@@ -17,6 +17,14 @@ patch(PosStore.prototype, {
         // Sobrescribe el método setup.
         await super.setup(...args);
 
+        try {
+            // Exponemos el pos_store en window para facilitar el acceso a otros scripts.
+            window.pos_store = this;
+            console.log("✅ pos_store expuesto en window.pos_store");
+        } catch (e) {
+            console.warn("No se pudo exponer pos_store:", e);
+        }
+
         console.log("PosStore: Configurando sincronización de pedidos offline...");
 
         // Añadimos un evento al setup, que enlaza el setup
