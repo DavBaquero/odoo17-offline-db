@@ -10,7 +10,6 @@ function findHeaderRoot() {
     // Intentamos acceder al shadow DOM si existe
     const sr = posRoot.shadowRoot;
     if (sr) {
-        
         // Buscamos el contenedor de la cabecera dentro del shadow DOM.
         const header = sr.querySelector(".pos-rightheader") || sr.querySelector(".header-buttons");
 
