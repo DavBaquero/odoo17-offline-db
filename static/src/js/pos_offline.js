@@ -193,6 +193,12 @@ patch(PosStore.prototype, {
             }
         }
     },     
+    async get_offline_orders() {
+        return await _get_orders_from_indexeddb();
+    },
+    async _clear_indexeddb_orders(uid) {
+        return await _clear_indexeddb_orders(uid);
+    },
 });
 
 /*  Se utiliza para obtener todas las ordenes 
