@@ -48,17 +48,37 @@ function insertButtonInto(headerRoot) {
             // Llamamos a la función de sincronización de pedidos offline expuesta previamente.
             if (window.pos_store && typeof window.pos_store.sync_offline_orders === "function") {
 
-                // Esperamos a que la sincronización termine.
-                await window.pos_store.sync_offline_orders();
-                alert("✅ Sincronización completada");
+                // Sobrescribimos temporalmente el método solo para esta invocación del botón.
+                const originalSync = window.pos_store.sync_offline_orders;
+                window.pos_store.sync_offline_orders = async function(...args) {
+                    console.log("sync_offline_orders sobrescrito para el botón");
+                    if (typeof originalSync === "function") {
+                        try{
+                            window.manual_sync_in_progress = true;
+                            await originalSync.apply(this, args);
+                            console.log("Sincronización manual completada, no se llama al originalSync.");
+                        } catch (e) {
+                            console.error("Error en la sincronización original:", e);
+                        }
+                    }
+                    return Promise.resolve();
+                };
+                try {
+                    await window.pos_store.sync_offline_orders();
+                } finally {
+                    // Restauramos el método original pase lo que pase.
+                    window.pos_store.sync_offline_orders = originalSync;
+                }
+
+                alert("Sincronización completada");
             } else {
                 // Si no existe la función, mostramos una alerta de error.
-                alert("⚠️ No se encuentra window.pos_store.sync_offline_orders()");
+                alert("No se encuentra window.pos_store.sync_offline_orders()");
                 console.warn("window.pos_store:", window.pos_store);
             }
         } catch (e) {
             console.error("Error sincronizando:", e);
-            alert("❌ Error al sincronizar: " + (e && e.message));
+            alert("Error al sincronizar: " + (e && e.message));
         } finally {
             // Restauramos el botón a su estado original.
             btn.disabled = false;
