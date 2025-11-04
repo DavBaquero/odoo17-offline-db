@@ -40,10 +40,6 @@ patch(PosStore.prototype, {
         coge todos los pedidos sin sicronizar y los sincroniza. */
     async sync_offline_orders(){
 
-        if (window.manual_sync_in_progress) {
-            console.log("Sincronización automática");
-            return;
-        }
 
         // Crea una constante de todos los pedidos que se obtienen del indexedDB.
         const offline_orders = await _get_orders_from_indexeddb()
@@ -66,11 +62,38 @@ patch(PosStore.prototype, {
             return;
         }
 
+        if (window.manual_sync_in_progress) {
+            try {
+                while (orders_to_sync.length > 0) {
+                    // Toma siempre el primer pedido de la cola.
+                    const order = orders_to_sync[0];
+
+                    order.uid = order.data.uid;
+                    this.db.add_order(order);
+
+                    // Intentamos subir el pedido.
+                    const subido = await super._flush_orders([order], { timeout: 5, shadow: false });
+                    if (subido) { result = true; }
+
+                    // Si se sube correctamente, lo borramos del indexedDB y de la base local de odoo.
+                    await _clear_indexeddb_orders(order.uid);
+                    await Promise.resolve(this.db.remove_order(order.uid));
+
+                    // Eliminamos el primer elemento de la cola tras éxito.
+                    orders_to_sync.shift();
+                    offline_orders.shift();
+                }
+            }catch(error){
+                console.error("Error durante la sincronización manual de pedidos offline:", error);
+            }finally{
+                window.manual_sync_in_progress = false;
+            }
+        }else{
+            
         let tiempo = await time_sync();
 
         console.log(`Iniciando sincronización durante ${tiempo / 1000} segundos...`);
-
-        try{
+            try{
             
             // Marca el tiempo de inicio.
             const inicio = Date.now();
@@ -141,7 +164,8 @@ patch(PosStore.prototype, {
                     this.sync_offline_orders();
                 }, 30*60*1000);
         }
-    },
+    }
+},
 
     /*  Sobrescritura de _flush_orders, intenta subir la orden, 
         sino hay conexión, usa el indexedDB para guardar los pedidos. */
