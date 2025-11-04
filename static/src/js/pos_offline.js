@@ -40,6 +40,11 @@ patch(PosStore.prototype, {
         coge todos los pedidos sin sicronizar y los sincroniza. */
     async sync_offline_orders(){
 
+        if (window.manual_sync_in_progress) {
+            console.log("Sincronización automática");
+            return;
+        }
+
         // Crea una constante de todos los pedidos que se obtienen del indexedDB.
         const offline_orders = await _get_orders_from_indexeddb()
 
