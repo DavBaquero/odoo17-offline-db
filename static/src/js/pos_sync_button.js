@@ -51,10 +51,12 @@ function insertButtonInto(headerRoot) {
                 // Sobrescribimos temporalmente el método solo para esta invocación del botón.
                 const originalSync = window.pos_store.sync_offline_orders;
                 window.pos_store.sync_offline_orders = async function(...args) {
-                    console.log("sync_offline_orders sobrescrito para el botón");
+                    // Personalizamos el comportamiento para llamar al originalSync de otra manera.
                     if (typeof originalSync === "function") {
                         try{
+                            // Indicamos que es una sincronización manual.
                             window.manual_sync_in_progress = true;
+                            // Llamamos al método original.
                             await originalSync.apply(this, args);
                             console.log("Sincronización manual completada, no se llama al originalSync.");
                         } catch (e) {
