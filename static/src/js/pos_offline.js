@@ -8,7 +8,9 @@ const DB_NAME = "POS_Order";
 const STORE_NAME = "store1";
 const DB_VERSION = 1;
 
+/*  Guardamos la referencia del método original de _flush_orders. */
 const FLUSH_ORDERS = PosStore.prototype._flush_orders;
+
 patch(PosStore.prototype, {
 
     /*  Sobrescritura del setup, para cuando esté online, 
@@ -63,6 +65,8 @@ patch(PosStore.prototype, {
             return;
         }
 
+        // Si la sincronización es manual, con el botón,
+        // intenta sincronizar todos los pedidos sin límite de tiempo.
         if (window.manual_sync_in_progress) {
             try {
                 while (orders_to_sync.length > 0) {
@@ -73,6 +77,8 @@ patch(PosStore.prototype, {
             } finally {
                 window.manual_sync_in_progress = false;
             }
+
+        // Si la sincronización es automática, usa un límite de tiempo.
         } else {
 
             let tiempo = await time_sync();
@@ -95,12 +101,11 @@ patch(PosStore.prototype, {
 
                         // Toma siempre el primer pedido de la cola.
                         const order = orders_to_sync[0];
-
-                        // Espera 2 segundos entre cada intento para evitar saturar el servidor.
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-
                         try {
-                            await sync_orders(orders_to_sync, result, this, offline_orders);
+                            while (orders_to_sync.length > 0) {
+                                // Sincroniza el pedido.
+                                await sync_orders(orders_to_sync, result, this, offline_orders);
+                            }
                         } catch (error) {
                             console.warn(`Error al sincronizar pedido ${order && order.uid}:`, error);
                             // En caso de error de red o servidor, salimos para reintentar más tarde.
@@ -113,6 +118,7 @@ patch(PosStore.prototype, {
                     // Si no quedan pedidos, salimos del bucle y volvemos a modo online.
                     if (pendientes.length === 0) {
                         console.log("Todos los pedidos sincronizados. Volviendo a modo online.");
+                        // Dispara el evento 'online' para notificar el cambio de estado.
                         window.dispatchEvent(new Event('online'));
                         break;
                     } else { // Si quedan pedidos, mantenemos el modo offline.
@@ -194,9 +200,11 @@ patch(PosStore.prototype, {
             }
         }
     },
+    // Hacemos público el método get_offline_orders
     async get_offline_orders() {
         return await _get_orders_from_indexeddb();
     },
+    // Hacemos público el método clear_indexeddb_orders
     async _clear_indexeddb_orders(uid) {
         return await _clear_indexeddb_orders(uid);
     },
@@ -379,9 +387,11 @@ async function del_odoo_local(orders, posStore) {
     console.log(`Clave de operaciones pendientes ('${pendingOperationsKey}') eliminada del Local Storage.`);
 }
 
+/*  Función utilizada para usar un timeout para sincronizar con el servidor. */
 async function time_sync() {
     console.log("Sincronizando hora con el servidor...");
 
+    // Devuelve el tiempo de espera para la sincronización.
     return new Promise((resolve, reject) => {
         setTimeout(() => {
             const time_for_out = 150000; // 150 segundos
@@ -390,13 +400,17 @@ async function time_sync() {
     });
 }
 
+/*  Función utilizada para sincronizar los pedidos pendientes. */
 async function sync_orders(orders_to_sync, result, context, offline_orders) {
     // Toma siempre el primer pedido de la cola.
     const order = orders_to_sync[0];
 
+    // Añade el pedido a la base de datos local de odoo.
     order.uid = order.data.uid;
     order.id = order.data.uid;
     context.db.add_order(order);
+
+    // Espera 2 segundos si no es manual, entre cada intento para evitar saturar el servidor.
     if(!window.manual_sync_in_progress){
         await new Promise(resolve => setTimeout(resolve, 2000));
     }
