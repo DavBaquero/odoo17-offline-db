@@ -69,16 +69,14 @@ patch(PosStore.prototype, {
         // intenta sincronizar todos los pedidos sin límite de tiempo.
         if (window.manual_sync_in_progress) {
             try {
-                while (orders_to_sync.length > 0) {
-                    await sync_orders(orders_to_sync, result, this, offline_orders);
-                }
+                await sync_orders(orders_to_sync, result, this, offline_orders);
             } catch (error) {
                 console.error("Error durante la sincronización manual de pedidos offline:", error);
             } finally {
                 window.manual_sync_in_progress = false;
             }
 
-        // Si la sincronización es automática, usa un límite de tiempo.
+            // Si la sincronización es automática, usa un límite de tiempo.
         } else {
 
             let tiempo = await time_sync();
@@ -102,10 +100,10 @@ patch(PosStore.prototype, {
                         // Toma siempre el primer pedido de la cola.
                         const order = orders_to_sync[0];
                         try {
-                            while (orders_to_sync.length > 0) {
-                                // Sincroniza el pedido.
-                                await sync_orders(orders_to_sync, result, this, offline_orders);
-                            }
+
+                            // Sincroniza el pedido.
+                            await sync_orders(orders_to_sync, result, this, offline_orders);
+
                         } catch (error) {
                             console.warn(`Error al sincronizar pedido ${order && order.uid}:`, error);
                             // En caso de error de red o servidor, salimos para reintentar más tarde.
@@ -402,27 +400,32 @@ async function time_sync() {
 
 /*  Función utilizada para sincronizar los pedidos pendientes. */
 async function sync_orders(orders_to_sync, result, context, offline_orders) {
-    // Toma siempre el primer pedido de la cola.
-    const order = orders_to_sync[0];
+    while (orders_to_sync.length > 0) {
 
-    // Añade el pedido a la base de datos local de odoo.
-    order.uid = order.data.uid;
-    order.id = order.data.uid;
-    context.db.add_order(order);
 
-    // Espera 2 segundos si no es manual, entre cada intento para evitar saturar el servidor.
-    if(!window.manual_sync_in_progress){
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Toma siempre el primer pedido de la cola.
+        const order = orders_to_sync[0];
+
+        // Añade el pedido a la base de datos local de odoo.
+        order.uid = order.data.uid;
+        order.id = order.data.uid;
+        context.db.add_order(order);
+
+        // Espera 2 segundos si no es manual, entre cada intento para evitar saturar el servidor.
+        if (!window.manual_sync_in_progress) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        // Intentamos subir el pedido.
+        const subido = await FLUSH_ORDERS.call(context, [order], { timeout: 5, shadow: false });
+        if (subido) { result = true; }
+
+        // Si se sube correctamente, lo borramos del indexedDB y de la base local de odoo.
+        await _clear_indexeddb_orders(order.uid);
+        await Promise.resolve(context.db.remove_order(order.uid));
+
+
+        // Eliminamos el primer elemento de la cola tras éxito.
+        orders_to_sync.shift();
+        offline_orders.shift();
     }
-    // Intentamos subir el pedido.
-    const subido = await FLUSH_ORDERS.call(context, [order], { timeout: 5, shadow: false });
-    if (subido) { result = true; }
-
-    // Si se sube correctamente, lo borramos del indexedDB y de la base local de odoo.
-    await _clear_indexeddb_orders(order.uid);
-    await Promise.resolve(context.db.remove_order(order.uid));
-
-    // Eliminamos el primer elemento de la cola tras éxito.
-    orders_to_sync.shift();
-    offline_orders.shift();
 }
