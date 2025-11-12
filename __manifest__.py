@@ -7,8 +7,11 @@
   "depends": ["point_of_sale"],
   "assets": {
     "point_of_sale._assets_pos": [
-      "odoo17-offline-db/static/src/js/pos_offline_db.js",
-      "odoo17-offline-db/static/src/js/pos_offline.js",
+        "pos_offline/static/src/js/pos_offline_db.js",
+        "pos_offline/static/src/js/pos_offline.js",
+        "pos_offline/static/src/js/pos_sync_button.js",
+        "pos_offline/static/src/css/pos_sync_button.scss",
+        "pos_offline/static/src/xml/pos_sync_button.xml",
     ],
   },
   "installable": True
