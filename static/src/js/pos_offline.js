@@ -97,8 +97,6 @@ patch(PosStore.prototype, {
                             break sincronizar;
                         }
 
-                        // Toma siempre el primer pedido de la cola.
-                        const order = orders_to_sync[0];
                         try {
 
                             // Sincroniza el pedido.
@@ -428,4 +426,5 @@ async function sync_orders(orders_to_sync, result, context, offline_orders) {
         orders_to_sync.shift();
         offline_orders.shift();
     }
+
 }
